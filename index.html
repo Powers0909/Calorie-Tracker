@@ -74,6 +74,16 @@
         <div id="barcode-status" class="barcode-status" aria-live="polite"></div>
       </div>
 
+      <div class="saved-card" aria-label="Saved scanned items">
+        <div class="saved-head">
+          <div class="saved-title">Saved scans</div>
+          <button id="saved-clear" class="btn-clear-small" type="button">Clear</button>
+        </div>
+        <input id="saved-search" class="saved-search" autocomplete="off" placeholder="Search saved items" />
+        <ul id="saved-list" class="saved-list"></ul>
+        <div id="saved-empty" class="saved-empty hidden">No saved items yet.</div>
+      </div>
+
       <!-- Normal add -->
       <form id="entry-form">
         <div class="form-row">

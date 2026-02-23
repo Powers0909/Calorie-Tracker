@@ -159,6 +159,17 @@
   const barcodeScanBtn = document.getElementById("barcode-scan");
   const barcodeStatus = document.getElementById("barcode-status");
 
+
+  // Saved scans UI
+  const savedSearchInput = document.getElementById("saved-search");
+  const savedListEl = document.getElementById("saved-list");
+  const savedEmptyEl = document.getElementById("saved-empty");
+  const savedClearBtn = document.getElementById("saved-clear");
+
+  // Saved scans persistence
+  const SCAN_DB_KEY = "calorie-tracker-scan-db-v1";
+  let scanDb = loadScanDb();
+
   // Scanner modal
   const scannerModal = document.getElementById("scanner-modal");
   const scannerVideo = document.getElementById("scanner-video");
@@ -405,6 +416,154 @@
     render();
   });
 
+
+  function loadScanDb() {
+    try {
+      const raw = localStorage.getItem(SCAN_DB_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveScanDb() {
+    localStorage.setItem(SCAN_DB_KEY, JSON.stringify(scanDb));
+  }
+
+  function upsertScanItem(item) {
+    const barcode = String(item.barcode || "").replace(/\D/g, "");
+    if (!barcode) return;
+
+    const nowIso = new Date().toISOString();
+    const idx = scanDb.findIndex((x) => x.barcode === barcode);
+
+    const base = {
+      barcode,
+      name: String(item.name || "Scanned item").trim(),
+      kcalPerServing: item.kcalPerServing != null ? Number(item.kcalPerServing) : null,
+      kcalPer100g: item.kcalPer100g != null ? Number(item.kcalPer100g) : null,
+      servingText: item.servingText ? String(item.servingText).trim() : "",
+      updatedAt: nowIso,
+      timesUsed: 0
+    };
+
+    if (idx >= 0) {
+      scanDb[idx] = Object.assign({}, scanDb[idx], base);
+    } else {
+      scanDb.unshift(base);
+    }
+
+    // Keep a reasonable size
+    if (scanDb.length > 200) scanDb = scanDb.slice(0, 200);
+
+    saveScanDb();
+    renderSavedScans();
+  }
+
+  function incrementSavedUse(barcode) {
+    const cleaned = String(barcode || "").replace(/\D/g, "");
+    const idx = scanDb.findIndex((x) => x.barcode === cleaned);
+    if (idx < 0) return;
+    scanDb[idx].timesUsed = (scanDb[idx].timesUsed || 0) + 1;
+    scanDb[idx].updatedAt = new Date().toISOString();
+    // Move to top
+    const [it] = scanDb.splice(idx, 1);
+    scanDb.unshift(it);
+    saveScanDb();
+    renderSavedScans();
+  }
+
+  function forgetSavedScan(barcode) {
+    const cleaned = String(barcode || "").replace(/\D/g, "");
+    scanDb = scanDb.filter((x) => x.barcode !== cleaned);
+    saveScanDb();
+    renderSavedScans();
+  }
+
+  function renderSavedScans() {
+    if (!savedListEl) return;
+
+    const q = String(savedSearchInput && savedSearchInput.value ? savedSearchInput.value : "")
+      .trim()
+      .toLowerCase();
+
+    const items = scanDb.filter((x) => {
+      if (!q) return true;
+      return (
+        (x.name || "").toLowerCase().includes(q) ||
+        String(x.barcode || "").includes(q)
+      );
+    });
+
+    savedListEl.innerHTML = "";
+
+    if (items.length === 0) {
+      savedEmptyEl.classList.remove("hidden");
+      return;
+    }
+
+    savedEmptyEl.classList.add("hidden");
+
+    items.slice(0, 30).forEach((it) => {
+      const li = document.createElement("li");
+      li.className = "saved-item";
+
+      const subParts = [];
+      subParts.push(it.barcode);
+      if (it.kcalPerServing != null) subParts.push(Math.round(it.kcalPerServing) + " cal/serv");
+      else if (it.kcalPer100g != null) subParts.push(Math.round(it.kcalPer100g) + " cal/100g");
+      if (it.servingText) subParts.push(it.servingText);
+
+      li.innerHTML =
+        '<div class="saved-left">' +
+          '<div class="saved-name">' + escapeHtml(it.name || "Scanned item") + "</div>" +
+          '<div class="saved-sub">' + escapeHtml(subParts.join(" • ")) + "</div>" +
+        "</div>" +
+        '<div class="saved-actions">' +
+          '<button class="btn-add-small" type="button" data-action="add" data-barcode="' + escapeHtml(it.barcode) + '">Add</button>' +
+          '<button class="btn-forget" type="button" data-action="forget" data-barcode="' + escapeHtml(it.barcode) + '">✕</button>' +
+        "</div>";
+
+      savedListEl.appendChild(li);
+    });
+  }
+
+  function addSavedScanToLog(barcode) {
+    const cleaned = String(barcode || "").replace(/\D/g, "");
+    const it = scanDb.find((x) => x.barcode === cleaned);
+    if (!it) return;
+
+    let calories = null;
+
+    if (it.kcalPerServing != null) {
+      calories = Math.round(it.kcalPerServing);
+    } else if (it.kcalPer100g != null) {
+      let grams = prompt("Calories are per 100g. How many grams did you eat?", "100");
+      if (grams == null) return;
+      grams = parseFloat(String(grams).replace(/[^0-9.]/g, ""));
+      if (!grams || grams <= 0) {
+        alert("Invalid grams amount.");
+        return;
+      }
+      calories = Math.round((it.kcalPer100g * grams) / 100);
+    } else {
+      alert("This saved item has no calories data. Scan again or enter manually.");
+      return;
+    }
+
+    const entries = getEntries(viewDate);
+    entries.push({
+      id: generateId(),
+      name: it.name || "Scanned item",
+      calories,
+      time: new Date().toISOString()
+    });
+    setEntries(viewDate, entries);
+    incrementSavedUse(cleaned);
+    render();
+  }
+
   // -----------------------------
   // Barcode + Open Food Facts
   // -----------------------------
@@ -448,6 +607,7 @@
       if (kcalPerServing != null) {
         foodNameInput.value = name;
         foodCaloriesInput.value = Math.round(kcalPerServing);
+        upsertScanItem({ barcode: cleaned, name, kcalPerServing: kcalPerServing, kcalPer100g: kcalPer100g, servingText: (p.serving_size || "") });
         setBarcodeStatus("Found: " + name + " (per serving).", false);
         foodCaloriesInput.focus();
         return;
@@ -467,12 +627,14 @@
         const cals = (kcalPer100g * grams) / 100;
         foodNameInput.value = name;
         foodCaloriesInput.value = Math.round(cals);
+        upsertScanItem({ barcode: cleaned, name, kcalPerServing: null, kcalPer100g: kcalPer100g, servingText: (p.serving_size || "") });
         setBarcodeStatus("Found: " + name + " (" + grams + "g).", false);
         foodCaloriesInput.focus();
         return;
       }
 
       foodNameInput.value = name;
+      upsertScanItem({ barcode: cleaned, name, kcalPerServing: null, kcalPer100g: null, servingText: (p.serving_size || "") });
       setBarcodeStatus("Found product name, but calories are missing. Enter calories manually.", true);
       foodNameInput.focus();
     } catch (err) {
@@ -495,6 +657,37 @@
       lookupBarcode(barcodeInput.value);
     }
   });
+
+
+  // Saved scans interactions
+  if (savedSearchInput) {
+    savedSearchInput.addEventListener("input", renderSavedScans);
+  }
+
+  if (savedListEl) {
+    savedListEl.addEventListener("click", function (e) {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const barcode = btn.dataset.barcode;
+
+      if (action === "add") {
+        addSavedScanToLog(barcode);
+      } else if (action === "forget") {
+        forgetSavedScan(barcode);
+      }
+    });
+  }
+
+  if (savedClearBtn) {
+    savedClearBtn.addEventListener("click", function () {
+      if (scanDb.length === 0) return;
+      if (!confirm("Clear saved scans?")) return;
+      scanDb = [];
+      saveScanDb();
+      renderSavedScans();
+    });
+  }
 
   // -----------------------------
   // Barcode scanning (Safari-compatible via ZXing)
@@ -579,5 +772,6 @@
   // -----------------------------
   // Init
   // -----------------------------
+  renderSavedScans();
   render();
 })();
