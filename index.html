@@ -71,6 +71,14 @@
           <input type="number" id="food-calories" placeholder="Calories" required min="1" />
           <button type="submit" class="btn-add">+</button>
         </div>
+        <div class="barcode-row">
+          <input type="text" id="barcode" placeholder="Barcode (UPC/EAN)" inputmode="numeric" autocomplete="off" />
+          <button type="button" id="btn-lookup" class="btn-secondary">Lookup</button>
+          <button type="button" id="btn-scan" class="btn-secondary">Scan</button>
+          <input type="file" id="barcode-photo" class="hidden" accept="image/*" capture="environment" />
+        </div>
+        <div id="lookup-status" class="status" aria-live="polite"></div>
+        <p class="hint">Packaged foods only. Data from Open Food Facts.</p>
       </form>
     </section>
 

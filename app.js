@@ -17,6 +17,11 @@
   const entryForm = document.getElementById("entry-form");
   const foodNameInput = document.getElementById("food-name");
   const foodCaloriesInput = document.getElementById("food-calories");
+  const barcodeInput = document.getElementById("barcode");
+  const lookupBtn = document.getElementById("btn-lookup");
+  const scanBtn = document.getElementById("btn-scan");
+  const barcodePhotoInput = document.getElementById("barcode-photo");
+  const lookupStatusEl = document.getElementById("lookup-status");
   const entriesList = document.getElementById("entries-list");
   const noEntries = document.getElementById("no-entries");
   const clearAllBtn = document.getElementById("clear-all");
@@ -76,6 +81,141 @@
     const d = new Date(iso);
     return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
+
+  // ── Barcode lookup (Open Food Facts) ──
+  function setLookupStatus(message, kind) {
+    if (!lookupStatusEl) return;
+    lookupStatusEl.textContent = message || "";
+    lookupStatusEl.classList.remove("success", "error");
+    if (kind) lookupStatusEl.classList.add(kind);
+  }
+
+  function normalizeBarcode(raw) {
+    return String(raw || "").replace(/[^0-9]/g, "");
+  }
+
+  async function lookupBarcodeAndPrefill(barcode) {
+    const code = normalizeBarcode(barcode);
+    if (!code) {
+      setLookupStatus("Enter a barcode first.", "error");
+      return;
+    }
+
+    setLookupStatus("Looking up barcode...", null);
+
+    // OFF endpoint docs:
+    // https://world.openfoodfacts.net/api/v2/product/{barcode}
+    const url =
+      "https://world.openfoodfacts.net/api/v2/product/" +
+      encodeURIComponent(code) +
+      "?fields=product_name,brands,serving_size,nutriments";
+
+    let data;
+    try {
+      const res = await fetch(url, { method: "GET" });
+      data = await res.json();
+    } catch (err) {
+      setLookupStatus("Network error. Try again.", "error");
+      return;
+    }
+
+    if (!data || data.status !== 1 || !data.product) {
+      setLookupStatus("Not found in Open Food Facts.", "error");
+      return;
+    }
+
+    const p = data.product;
+    const nameBase = (p.product_name || "").trim();
+    const brand = (p.brands || "").split(",")[0].trim();
+    const displayName = (brand && nameBase) ? (brand + " " + nameBase) : (nameBase || brand || "Food");
+
+    const nutr = p.nutriments || {};
+    const kcalServing = Number(nutr["energy-kcal_serving"]);
+    const kcal100g = Number(nutr["energy-kcal_100g"]);
+
+    let calories = null;
+
+    if (Number.isFinite(kcalServing) && kcalServing > 0) {
+      calories = Math.round(kcalServing);
+    } else if (Number.isFinite(kcal100g) && kcal100g > 0) {
+      const serving = (p.serving_size || "").trim();
+      const gramsStr = prompt(
+        "This item has calories per 100g. Enter grams eaten" +
+          (serving ? " (serving size: " + serving + ")" : "") +
+          ":"
+      );
+      const grams = Number(String(gramsStr || "").replace(",", "."));
+      if (!Number.isFinite(grams) || grams <= 0) {
+        setLookupStatus("Cancelled. Enter calories manually or try again.", "error");
+        return;
+      }
+      calories = Math.round((kcal100g * grams) / 100);
+    } else {
+      setLookupStatus("Found product, but calories are missing in the database.", "error");
+      foodNameInput.value = displayName;
+      foodCaloriesInput.value = "";
+      foodCaloriesInput.focus();
+      return;
+    }
+
+    foodNameInput.value = displayName;
+    foodCaloriesInput.value = String(calories);
+    foodCaloriesInput.focus();
+    setLookupStatus("Filled from barcode.", "success");
+  }
+
+  async function scanBarcodeFromPhotoFile(file) {
+    if (!file) return;
+
+    if (!("BarcodeDetector" in window)) {
+      setLookupStatus("Barcode scan is not supported on this browser. Type the barcode instead.", "error");
+      return;
+    }
+
+    setLookupStatus("Scanning photo...", null);
+
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file);
+    } catch (err) {
+      setLookupStatus("Could not read that photo. Try again.", "error");
+      return;
+    }
+
+    let detector;
+    try {
+      detector = new BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf"],
+      });
+    } catch (err) {
+      setLookupStatus("Barcode scan is not supported on this device.", "error");
+      return;
+    }
+
+    let codes = [];
+    try {
+      codes = await detector.detect(bitmap);
+    } catch (err) {
+      setLookupStatus("Could not detect a barcode. Try again with a clearer photo.", "error");
+      return;
+    }
+
+    if (!codes || codes.length === 0) {
+      setLookupStatus("No barcode detected. Try again closer and with good lighting.", "error");
+      return;
+    }
+
+    const rawValue = codes[0].rawValue;
+    const normalized = normalizeBarcode(rawValue);
+    if (!normalized) {
+      setLookupStatus("Barcode read failed. Try again.", "error");
+      return;
+    }
+
+    barcodeInput.value = normalized;
+    await lookupBarcodeAndPrefill(normalized);
+  }
+
 
   // ── Persistence ──
   function loadState() {
@@ -204,6 +344,34 @@
     foodNameInput.focus();
     render();
   });
+
+
+  // Barcode buttons
+  if (lookupBtn && barcodeInput) {
+    lookupBtn.addEventListener("click", function () {
+      lookupBarcodeAndPrefill(barcodeInput.value);
+    });
+
+    barcodeInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        lookupBarcodeAndPrefill(barcodeInput.value);
+      }
+    });
+  }
+
+  if (scanBtn && barcodePhotoInput) {
+    scanBtn.addEventListener("click", function () {
+      setLookupStatus("", null);
+      barcodePhotoInput.value = "";
+      barcodePhotoInput.click();
+    });
+
+    barcodePhotoInput.addEventListener("change", function () {
+      const file = barcodePhotoInput.files && barcodePhotoInput.files[0];
+      scanBarcodeFromPhotoFile(file);
+    });
+  }
 
   entriesList.addEventListener("click", function (e) {
     const btn = e.target.closest(".btn-delete");
