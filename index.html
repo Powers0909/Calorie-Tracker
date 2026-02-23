@@ -7,99 +7,116 @@
   <title>Calorie Tracker</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="container">
     <header>
       <h1>Calorie Tracker</h1>
+
       <div class="date-nav">
-        <button id="prev-day" aria-label="Previous day">&larr;</button>
-        <span id="current-date"></span>
-        <button id="next-day" aria-label="Next day">&rarr;</button>
+        <button id="prev-day" aria-label="Previous day">←</button>
+        <span id="current-date">Today</span>
+        <button id="next-day" aria-label="Next day">→</button>
       </div>
-      <button id="toggle-calendar" class="btn-toggle-cal">Calendar</button>
+
+      <button id="toggle-calendar" class="btn-toggle-cal" type="button">Calendar</button>
     </header>
 
-    <section id="calendar-section" class="calendar-section hidden">
+    <section id="calendar-section" class="calendar-section hidden" aria-label="Calendar">
       <div class="cal-header">
-        <button id="prev-month" aria-label="Previous month">&larr;</button>
-        <span id="cal-month-label"></span>
-        <button id="next-month" aria-label="Next month">&rarr;</button>
+        <button id="prev-month" aria-label="Previous month">←</button>
+        <span id="cal-month-label">Month</span>
+        <button id="next-month" aria-label="Next month">→</button>
       </div>
-      <div class="cal-grid">
-        <div class="cal-dow">S</div>
-        <div class="cal-dow">M</div>
-        <div class="cal-dow">T</div>
-        <div class="cal-dow">W</div>
-        <div class="cal-dow">T</div>
-        <div class="cal-dow">F</div>
-        <div class="cal-dow">S</div>
+
+      <div class="cal-grid cal-dow-row" aria-hidden="true">
+        <div class="cal-dow">S</div><div class="cal-dow">M</div><div class="cal-dow">T</div><div class="cal-dow">W</div><div class="cal-dow">T</div><div class="cal-dow">F</div><div class="cal-dow">S</div>
       </div>
+
       <div id="cal-days" class="cal-grid"></div>
     </section>
 
-    <section class="summary-card">
-      <div class="summary-ring">
-        <svg viewBox="0 0 120 120" class="ring-svg">
-          <circle cx="60" cy="60" r="52" class="ring-bg" />
-          <circle cx="60" cy="60" r="52" class="ring-fill" id="ring-fill" />
+    <section class="summary-card" aria-label="Daily summary">
+      <div class="summary-ring" aria-hidden="true">
+        <svg class="ring-svg" viewBox="0 0 120 120">
+          <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+          <circle id="ring-fill" class="ring-fill" cx="60" cy="60" r="52"></circle>
         </svg>
         <div class="ring-text">
-          <span id="calories-consumed" class="ring-number">0</span>
-          <span class="ring-label">eaten</span>
+          <div class="ring-number" id="calories-consumed">0</div>
+          <div class="ring-label">eaten</div>
         </div>
       </div>
+
       <div class="summary-details">
         <div class="summary-item">
-          <span class="summary-value" id="calories-remaining">0</span>
-          <span class="summary-label">remaining</span>
+          <div class="summary-value" id="calories-remaining">0</div>
+          <div class="summary-label">remaining</div>
         </div>
         <div class="summary-item">
-          <span class="summary-value" id="calorie-goal">2000</span>
-          <span class="summary-label">goal</span>
+          <div class="summary-value"><span id="calorie-goal">2000</span></div>
+          <div class="summary-label">goal</div>
         </div>
       </div>
     </section>
 
-    <section class="add-entry">
+    <section class="add-entry" aria-label="Add food">
       <h2>Add Food</h2>
+
+      <!-- Barcode tools -->
+      <div class="barcode-card" aria-label="Barcode lookup">
+        <div class="barcode-row">
+          <input id="barcode-input" inputmode="numeric" autocomplete="off" placeholder="Barcode (optional)" />
+          <button id="barcode-lookup" class="btn-secondary" type="button">Lookup</button>
+          <button id="barcode-scan" class="btn-secondary" type="button">Scan</button>
+        </div>
+        <div id="barcode-status" class="barcode-status" aria-live="polite"></div>
+      </div>
+
+      <!-- Normal add -->
       <form id="entry-form">
         <div class="form-row">
-          <input type="text" id="food-name" placeholder="Food name" required autocomplete="off" />
-          <input type="number" id="food-calories" placeholder="Calories" required min="1" />
-          <button type="submit" class="btn-add">+</button>
+          <input id="food-name" placeholder="Food name" autocomplete="off" />
+          <input id="food-calories" type="number" inputmode="numeric" placeholder="Cals" />
+          <button class="btn-add" type="submit" aria-label="Add">+</button>
         </div>
-        <div class="barcode-row">
-          <input type="text" id="barcode" placeholder="Barcode (UPC/EAN)" inputmode="numeric" autocomplete="off" />
-          <button type="button" id="btn-lookup" class="btn-secondary">Lookup</button>
-          <button type="button" id="btn-scan" class="btn-secondary">Scan</button>
-          <input type="file" id="barcode-photo" class="hidden" accept="image/*" capture="environment" />
-        </div>
-        <div id="lookup-status" class="status" aria-live="polite"></div>
-        <p class="hint">Packaged foods only. Data from Open Food Facts.</p>
       </form>
     </section>
 
-    <section class="entries-section">
+    <section class="entries-section" aria-label="Today's food">
       <div class="entries-header">
         <h2>Today's Food</h2>
-        <button id="clear-all" class="btn-clear" title="Clear all entries">Clear All</button>
+        <button id="clear-all" class="btn-clear" type="button">Clear All</button>
       </div>
+
       <ul id="entries-list" class="entries-list"></ul>
-      <p id="no-entries" class="no-entries">No entries yet. Add your first food above.</p>
+      <div id="no-entries" class="no-entries">No entries yet. Add your first food above.</div>
     </section>
 
-    <section class="settings-section">
+    <section class="settings-section" aria-label="Settings">
       <h2>Settings</h2>
       <div class="setting-row">
         <label for="goal-input">Daily calorie goal</label>
-        <input type="number" id="goal-input" min="500" max="10000" value="2000" />
+        <input id="goal-input" type="number" inputmode="numeric" min="500" max="10000" />
       </div>
     </section>
   </div>
 
+  <!-- Scanner modal -->
+  <div id="scanner-modal" class="scanner-modal hidden" role="dialog" aria-modal="true" aria-label="Barcode scanner">
+    <div class="scanner-sheet">
+      <div class="scanner-header">
+        <div class="scanner-title">Scan barcode</div>
+        <button id="scanner-close" class="btn-secondary" type="button">Close</button>
+      </div>
+      <video id="scanner-video" class="scanner-video" muted playsinline></video>
+      <div class="scanner-help">Hold the barcode inside the camera view. Works best in good light.</div>
+    </div>
+  </div>
+
+  <!-- ZXing (Safari-compatible scanning) -->
+  <script src="https://unpkg.com/@zxing/browser@0.1.5"></script>
   <script src="app.js"></script>
 </body>
 </html>

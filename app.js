@@ -1,223 +1,13 @@
 (function () {
   "use strict";
 
-  // ── State ──
+  // -----------------------------
+  // State + persistence
+  // -----------------------------
   const STORAGE_KEY = "calorie-tracker-data";
   let state = loadState();
   let viewDate = todayKey();
 
-  // ── DOM refs ──
-  const currentDateEl = document.getElementById("current-date");
-  const prevDayBtn = document.getElementById("prev-day");
-  const nextDayBtn = document.getElementById("next-day");
-  const caloriesConsumedEl = document.getElementById("calories-consumed");
-  const caloriesRemainingEl = document.getElementById("calories-remaining");
-  const calorieGoalEl = document.getElementById("calorie-goal");
-  const ringFill = document.getElementById("ring-fill");
-  const entryForm = document.getElementById("entry-form");
-  const foodNameInput = document.getElementById("food-name");
-  const foodCaloriesInput = document.getElementById("food-calories");
-  const barcodeInput = document.getElementById("barcode");
-  const lookupBtn = document.getElementById("btn-lookup");
-  const scanBtn = document.getElementById("btn-scan");
-  const barcodePhotoInput = document.getElementById("barcode-photo");
-  const lookupStatusEl = document.getElementById("lookup-status");
-  const entriesList = document.getElementById("entries-list");
-  const noEntries = document.getElementById("no-entries");
-  const clearAllBtn = document.getElementById("clear-all");
-  const goalInput = document.getElementById("goal-input");
-  const toggleCalBtn = document.getElementById("toggle-calendar");
-  const calendarSection = document.getElementById("calendar-section");
-  const calMonthLabel = document.getElementById("cal-month-label");
-  const prevMonthBtn = document.getElementById("prev-month");
-  const nextMonthBtn = document.getElementById("next-month");
-  const calDaysContainer = document.getElementById("cal-days");
-
-  // ── Calendar state ──
-  let calendarOpen = false;
-  let calYear = new Date().getFullYear();
-  let calMonth = new Date().getMonth(); // 0-indexed
-
-  // ── Helpers ──
-  function todayKey() {
-    const d = new Date();
-    return d.getFullYear() + "-" +
-      String(d.getMonth() + 1).padStart(2, "0") + "-" +
-      String(d.getDate()).padStart(2, "0");
-  }
-
-  function formatDisplayDate(key) {
-    const today = todayKey();
-    if (key === today) return "Today";
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yKey = yesterday.getFullYear() + "-" +
-      String(yesterday.getMonth() + 1).padStart(2, "0") + "-" +
-      String(yesterday.getDate()).padStart(2, "0");
-    if (key === yKey) return "Yesterday";
-    const [y, m, d] = key.split("-").map(Number);
-    const date = new Date(y, m - 1, d);
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-  }
-
-  function shiftDate(key, delta) {
-    const [y, m, d] = key.split("-").map(Number);
-    const date = new Date(y, m - 1, d);
-    date.setDate(date.getDate() + delta);
-    return date.getFullYear() + "-" +
-      String(date.getMonth() + 1).padStart(2, "0") + "-" +
-      String(date.getDate()).padStart(2, "0");
-  }
-
-  function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  }
-
-  function formatTime(iso) {
-    const d = new Date(iso);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  }
-
-  // ── Barcode lookup (Open Food Facts) ──
-  function setLookupStatus(message, kind) {
-    if (!lookupStatusEl) return;
-    lookupStatusEl.textContent = message || "";
-    lookupStatusEl.classList.remove("success", "error");
-    if (kind) lookupStatusEl.classList.add(kind);
-  }
-
-  function normalizeBarcode(raw) {
-    return String(raw || "").replace(/[^0-9]/g, "");
-  }
-
-  async function lookupBarcodeAndPrefill(barcode) {
-    const code = normalizeBarcode(barcode);
-    if (!code) {
-      setLookupStatus("Enter a barcode first.", "error");
-      return;
-    }
-
-    setLookupStatus("Looking up barcode...", null);
-
-    // OFF endpoint docs:
-    // https://world.openfoodfacts.net/api/v2/product/{barcode}
-    const url =
-      "https://world.openfoodfacts.net/api/v2/product/" +
-      encodeURIComponent(code) +
-      "?fields=product_name,brands,serving_size,nutriments";
-
-    let data;
-    try {
-      const res = await fetch(url, { method: "GET" });
-      data = await res.json();
-    } catch (err) {
-      setLookupStatus("Network error. Try again.", "error");
-      return;
-    }
-
-    if (!data || data.status !== 1 || !data.product) {
-      setLookupStatus("Not found in Open Food Facts.", "error");
-      return;
-    }
-
-    const p = data.product;
-    const nameBase = (p.product_name || "").trim();
-    const brand = (p.brands || "").split(",")[0].trim();
-    const displayName = (brand && nameBase) ? (brand + " " + nameBase) : (nameBase || brand || "Food");
-
-    const nutr = p.nutriments || {};
-    const kcalServing = Number(nutr["energy-kcal_serving"]);
-    const kcal100g = Number(nutr["energy-kcal_100g"]);
-
-    let calories = null;
-
-    if (Number.isFinite(kcalServing) && kcalServing > 0) {
-      calories = Math.round(kcalServing);
-    } else if (Number.isFinite(kcal100g) && kcal100g > 0) {
-      const serving = (p.serving_size || "").trim();
-      const gramsStr = prompt(
-        "This item has calories per 100g. Enter grams eaten" +
-          (serving ? " (serving size: " + serving + ")" : "") +
-          ":"
-      );
-      const grams = Number(String(gramsStr || "").replace(",", "."));
-      if (!Number.isFinite(grams) || grams <= 0) {
-        setLookupStatus("Cancelled. Enter calories manually or try again.", "error");
-        return;
-      }
-      calories = Math.round((kcal100g * grams) / 100);
-    } else {
-      setLookupStatus("Found product, but calories are missing in the database.", "error");
-      foodNameInput.value = displayName;
-      foodCaloriesInput.value = "";
-      foodCaloriesInput.focus();
-      return;
-    }
-
-    foodNameInput.value = displayName;
-    foodCaloriesInput.value = String(calories);
-    foodCaloriesInput.focus();
-    setLookupStatus("Filled from barcode.", "success");
-  }
-
-  async function scanBarcodeFromPhotoFile(file) {
-    if (!file) return;
-
-    if (!("BarcodeDetector" in window)) {
-      setLookupStatus("Barcode scan is not supported on this browser. Type the barcode instead.", "error");
-      return;
-    }
-
-    setLookupStatus("Scanning photo...", null);
-
-    let bitmap;
-    try {
-      bitmap = await createImageBitmap(file);
-    } catch (err) {
-      setLookupStatus("Could not read that photo. Try again.", "error");
-      return;
-    }
-
-    let detector;
-    try {
-      detector = new BarcodeDetector({
-        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf"],
-      });
-    } catch (err) {
-      setLookupStatus("Barcode scan is not supported on this device.", "error");
-      return;
-    }
-
-    let codes = [];
-    try {
-      codes = await detector.detect(bitmap);
-    } catch (err) {
-      setLookupStatus("Could not detect a barcode. Try again with a clearer photo.", "error");
-      return;
-    }
-
-    if (!codes || codes.length === 0) {
-      setLookupStatus("No barcode detected. Try again closer and with good lighting.", "error");
-      return;
-    }
-
-    const rawValue = codes[0].rawValue;
-    const normalized = normalizeBarcode(rawValue);
-    if (!normalized) {
-      setLookupStatus("Barcode read failed. Try again.", "error");
-      return;
-    }
-
-    barcodeInput.value = normalized;
-    await lookupBarcodeAndPrefill(normalized);
-  }
-
-
-  // ── Persistence ──
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -225,11 +15,11 @@
         const parsed = JSON.parse(raw);
         return {
           goal: parsed.goal || 2000,
-          days: parsed.days || {},
+          days: parsed.days || {}
         };
       }
     } catch (e) {
-      // ignore corrupt data
+      // ignore
     }
     return { goal: 2000, days: {} };
   }
@@ -243,7 +33,7 @@
   }
 
   function setEntries(dateKey, entries) {
-    if (entries.length === 0) {
+    if (!entries || entries.length === 0) {
       delete state.days[dateKey];
     } else {
       state.days[dateKey] = entries;
@@ -251,70 +41,63 @@
     saveState();
   }
 
-  // ── Ring animation ──
-  const CIRCUMFERENCE = 2 * Math.PI * 52; // ~326.73
-
-  function updateRing(consumed, goal) {
-    const ratio = Math.min(consumed / goal, 1);
-    const offset = CIRCUMFERENCE - ratio * CIRCUMFERENCE;
-    ringFill.style.strokeDashoffset = offset;
-
-    if (consumed > goal) {
-      ringFill.classList.add("over");
-    } else {
-      ringFill.classList.remove("over");
-    }
+  // -----------------------------
+  // Helpers
+  // -----------------------------
+  function todayKey() {
+    const d = new Date();
+    return (
+      d.getFullYear() +
+      "-" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(d.getDate()).padStart(2, "0")
+    );
   }
 
-  // ── Render ──
-  function render() {
-    const entries = getEntries(viewDate);
-    const consumed = entries.reduce((sum, e) => sum + e.calories, 0);
-    const remaining = Math.max(0, state.goal - consumed);
+  function formatDisplayDate(key) {
+    const t = todayKey();
+    if (key === t) return "Today";
 
-    // Date nav
-    currentDateEl.textContent = formatDisplayDate(viewDate);
-    nextDayBtn.disabled = viewDate >= todayKey();
-    nextDayBtn.style.opacity = viewDate >= todayKey() ? 0.3 : 1;
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yKey =
+      y.getFullYear() +
+      "-" +
+      String(y.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(y.getDate()).padStart(2, "0");
+    if (key === yKey) return "Yesterday";
 
-    // Summary
-    caloriesConsumedEl.textContent = consumed.toLocaleString();
-    caloriesRemainingEl.textContent = remaining.toLocaleString();
-    calorieGoalEl.textContent = state.goal.toLocaleString();
-    updateRing(consumed, state.goal);
+    const parts = key.split("-").map(Number);
+    const date = new Date(parts[0], parts[1] - 1, parts[2]);
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric"
+    });
+  }
 
-    // Goal input
-    goalInput.value = state.goal;
+  function shiftDate(key, delta) {
+    const parts = key.split("-").map(Number);
+    const date = new Date(parts[0], parts[1] - 1, parts[2]);
+    date.setDate(date.getDate() + delta);
+    return (
+      date.getFullYear() +
+      "-" +
+      String(date.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(date.getDate()).padStart(2, "0")
+    );
+  }
 
-    // Calendar refresh
-    if (calendarOpen) {
-      var parts = viewDate.split("-").map(Number);
-      calYear = parts[0];
-      calMonth = parts[1] - 1;
-      renderCalendar();
-    }
+  function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
 
-    // Entries list
-    entriesList.innerHTML = "";
-    if (entries.length === 0) {
-      noEntries.classList.remove("hidden");
-    } else {
-      noEntries.classList.add("hidden");
-      entries.slice().reverse().forEach(function (entry) {
-        const li = document.createElement("li");
-        li.className = "entry-item";
-        li.innerHTML =
-          '<div class="entry-info">' +
-            '<span class="entry-name">' + escapeHtml(entry.name) + '</span>' +
-            '<span class="entry-time">' + formatTime(entry.time) + '</span>' +
-          '</div>' +
-          '<div class="entry-right">' +
-            '<span class="entry-calories">' + entry.calories + ' cal</span>' +
-            '<button class="btn-delete" data-id="' + entry.id + '" title="Delete">&times;</button>' +
-          '</div>';
-        entriesList.appendChild(li);
-      });
-    }
+  function formatTime(iso) {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
 
   function escapeHtml(str) {
@@ -323,7 +106,131 @@
     return div.innerHTML;
   }
 
-  // ── Event handlers ──
+  // -----------------------------
+  // Ring
+  // -----------------------------
+  const CIRCUMFERENCE = 2 * Math.PI * 52; // ~326.73
+
+  function updateRing(consumed, goal) {
+    const ratio = Math.min(consumed / goal, 1);
+    const offset = CIRCUMFERENCE - ratio * CIRCUMFERENCE;
+    ringFill.style.strokeDashoffset = offset;
+    if (consumed > goal) ringFill.classList.add("over");
+    else ringFill.classList.remove("over");
+  }
+
+  // -----------------------------
+  // DOM refs
+  // -----------------------------
+  const currentDateEl = document.getElementById("current-date");
+  const prevDayBtn = document.getElementById("prev-day");
+  const nextDayBtn = document.getElementById("next-day");
+
+  const caloriesConsumedEl = document.getElementById("calories-consumed");
+  const caloriesRemainingEl = document.getElementById("calories-remaining");
+  const calorieGoalEl = document.getElementById("calorie-goal");
+  const ringFill = document.getElementById("ring-fill");
+
+  const entryForm = document.getElementById("entry-form");
+  const foodNameInput = document.getElementById("food-name");
+  const foodCaloriesInput = document.getElementById("food-calories");
+
+  const entriesList = document.getElementById("entries-list");
+  const noEntries = document.getElementById("no-entries");
+  const clearAllBtn = document.getElementById("clear-all");
+
+  const goalInput = document.getElementById("goal-input");
+
+  // Calendar
+  const toggleCalBtn = document.getElementById("toggle-calendar");
+  const calendarSection = document.getElementById("calendar-section");
+  const calMonthLabel = document.getElementById("cal-month-label");
+  const prevMonthBtn = document.getElementById("prev-month");
+  const nextMonthBtn = document.getElementById("next-month");
+  const calDaysContainer = document.getElementById("cal-days");
+
+  let calendarOpen = false;
+  let calYear = new Date().getFullYear();
+  let calMonth = new Date().getMonth();
+
+  // Barcode tools
+  const barcodeInput = document.getElementById("barcode-input");
+  const barcodeLookupBtn = document.getElementById("barcode-lookup");
+  const barcodeScanBtn = document.getElementById("barcode-scan");
+  const barcodeStatus = document.getElementById("barcode-status");
+
+  // Scanner modal
+  const scannerModal = document.getElementById("scanner-modal");
+  const scannerVideo = document.getElementById("scanner-video");
+  const scannerCloseBtn = document.getElementById("scanner-close");
+
+  let scanControls = null;
+  let codeReader = null;
+
+  // -----------------------------
+  // Render
+  // -----------------------------
+  function render() {
+    const entries = getEntries(viewDate);
+    const consumed = entries.reduce((sum, e) => sum + e.calories, 0);
+    const remaining = Math.max(0, state.goal - consumed);
+
+    currentDateEl.textContent = formatDisplayDate(viewDate);
+
+    nextDayBtn.disabled = viewDate >= todayKey();
+    nextDayBtn.style.opacity = viewDate >= todayKey() ? 0.3 : 1;
+
+    caloriesConsumedEl.textContent = consumed.toLocaleString();
+    caloriesRemainingEl.textContent = remaining.toLocaleString();
+    calorieGoalEl.textContent = state.goal.toLocaleString();
+
+    updateRing(consumed, state.goal);
+
+    goalInput.value = state.goal;
+
+    if (calendarOpen) {
+      const parts = viewDate.split("-").map(Number);
+      calYear = parts[0];
+      calMonth = parts[1] - 1;
+      renderCalendar();
+    }
+
+    entriesList.innerHTML = "";
+    if (entries.length === 0) {
+      noEntries.classList.remove("hidden");
+    } else {
+      noEntries.classList.add("hidden");
+      entries
+        .slice()
+        .reverse()
+        .forEach((entry) => {
+          const li = document.createElement("li");
+          li.className = "entry-item";
+          li.innerHTML =
+            '<div class="entry-info">' +
+            '<div class="entry-name">' +
+            escapeHtml(entry.name) +
+            "</div>" +
+            '<div class="entry-time">' +
+            formatTime(entry.time) +
+            "</div>" +
+            "</div>" +
+            '<div class="entry-right">' +
+            '<div class="entry-calories">' +
+            entry.calories +
+            " cal</div>" +
+            '<button class="btn-delete" type="button" aria-label="Delete" data-id="' +
+            entry.id +
+            '">×</button>' +
+            "</div>";
+          entriesList.appendChild(li);
+        });
+    }
+  }
+
+  // -----------------------------
+  // Event handlers: entries
+  // -----------------------------
   entryForm.addEventListener("submit", function (e) {
     e.preventDefault();
     const name = foodNameInput.value.trim();
@@ -333,9 +240,9 @@
     const entries = getEntries(viewDate);
     entries.push({
       id: generateId(),
-      name: name,
-      calories: calories,
-      time: new Date().toISOString(),
+      name,
+      calories,
+      time: new Date().toISOString()
     });
     setEntries(viewDate, entries);
 
@@ -345,41 +252,11 @@
     render();
   });
 
-
-  // Barcode buttons
-  if (lookupBtn && barcodeInput) {
-    lookupBtn.addEventListener("click", function () {
-      lookupBarcodeAndPrefill(barcodeInput.value);
-    });
-
-    barcodeInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        lookupBarcodeAndPrefill(barcodeInput.value);
-      }
-    });
-  }
-
-  if (scanBtn && barcodePhotoInput) {
-    scanBtn.addEventListener("click", function () {
-      setLookupStatus("", null);
-      barcodePhotoInput.value = "";
-      barcodePhotoInput.click();
-    });
-
-    barcodePhotoInput.addEventListener("change", function () {
-      const file = barcodePhotoInput.files && barcodePhotoInput.files[0];
-      scanBarcodeFromPhotoFile(file);
-    });
-  }
-
   entriesList.addEventListener("click", function (e) {
     const btn = e.target.closest(".btn-delete");
     if (!btn) return;
     const id = btn.dataset.id;
-    const entries = getEntries(viewDate).filter(function (entry) {
-      return entry.id !== id;
-    });
+    const entries = getEntries(viewDate).filter((entry) => entry.id !== id);
     setEntries(viewDate, entries);
     render();
   });
@@ -414,43 +291,43 @@
     }
   });
 
-  // ── Calendar ──
+  // -----------------------------
+  // Calendar
+  // -----------------------------
   function renderCalendar() {
-    var monthNames = ["January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"];
+    const monthNames = [
+      "January","February","March","April","May","June",
+      "July","August","September","October","November","December"
+    ];
     calMonthLabel.textContent = monthNames[calMonth] + " " + calYear;
 
-    // Disable next month if it would go past current month
-    var now = new Date();
-    var isCurrentMonth = calYear === now.getFullYear() && calMonth === now.getMonth();
-    var isFutureMonth = calYear > now.getFullYear() ||
-      (calYear === now.getFullYear() && calMonth >= now.getMonth());
+    const now = new Date();
+    const isFutureMonth = calYear > now.getFullYear() || (calYear === now.getFullYear() && calMonth >= now.getMonth());
     nextMonthBtn.disabled = isFutureMonth;
     nextMonthBtn.style.opacity = isFutureMonth ? 0.3 : 1;
 
-    // Build day cells
     calDaysContainer.innerHTML = "";
-    var firstDay = new Date(calYear, calMonth, 1).getDay(); // 0=Sunday
-    var daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-    var todayStr = todayKey();
+    const firstDay = new Date(calYear, calMonth, 1).getDay();
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const todayStr = todayKey();
 
-    // Empty cells for days before the 1st
-    for (var i = 0; i < firstDay; i++) {
-      var empty = document.createElement("div");
+    for (let i = 0; i < firstDay; i++) {
+      const empty = document.createElement("div");
       empty.className = "cal-cell cal-empty";
       calDaysContainer.appendChild(empty);
     }
 
-    // Day cells
-    for (var d = 1; d <= daysInMonth; d++) {
-      var dateKey = calYear + "-" +
-        String(calMonth + 1).padStart(2, "0") + "-" +
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateKey =
+        calYear +
+        "-" +
+        String(calMonth + 1).padStart(2, "0") +
+        "-" +
         String(d).padStart(2, "0");
 
-      var cell = document.createElement("div");
+      const cell = document.createElement("div");
       cell.className = "cal-cell";
 
-      // Don't allow selecting future dates
       if (dateKey > todayStr) {
         cell.classList.add("cal-future");
       } else {
@@ -460,22 +337,18 @@
       if (dateKey === todayStr) cell.classList.add("cal-today");
       if (dateKey === viewDate) cell.classList.add("cal-selected");
 
-      var dayNum = document.createElement("span");
+      const dayNum = document.createElement("span");
       dayNum.className = "cal-day-num";
       dayNum.textContent = d;
       cell.appendChild(dayNum);
 
-      // Show calorie total if entries exist
-      var entries = getEntries(dateKey);
+      const entries = getEntries(dateKey);
       if (entries.length > 0 && dateKey <= todayStr) {
-        var total = entries.reduce(function (sum, e) { return sum + e.calories; }, 0);
-        var cals = document.createElement("span");
+        const total = entries.reduce((sum, e) => sum + e.calories, 0);
+        const cals = document.createElement("span");
         cals.className = "cal-day-cals";
-        if (total > state.goal) {
-          cals.classList.add("cal-over");
-        } else {
-          cals.classList.add("cal-under");
-        }
+        if (total > state.goal) cals.classList.add("cal-over");
+        else cals.classList.add("cal-under");
         cals.textContent = total;
         cell.appendChild(cals);
         cell.classList.add("cal-has-data");
@@ -490,8 +363,7 @@
     if (calendarOpen) {
       calendarSection.classList.remove("hidden");
       toggleCalBtn.classList.add("active");
-      // Sync calendar to currently viewed date
-      var parts = viewDate.split("-").map(Number);
+      const parts = viewDate.split("-").map(Number);
       calYear = parts[0];
       calMonth = parts[1] - 1;
       renderCalendar();
@@ -513,7 +385,7 @@
   });
 
   nextMonthBtn.addEventListener("click", function () {
-    var now = new Date();
+    const now = new Date();
     if (calYear === now.getFullYear() && calMonth >= now.getMonth()) return;
     calMonth++;
     if (calMonth > 11) {
@@ -524,7 +396,7 @@
   });
 
   calDaysContainer.addEventListener("click", function (e) {
-    var cell = e.target.closest(".cal-cell[data-date]");
+    const cell = e.target.closest(".cal-cell[data-date]");
     if (!cell) return;
     viewDate = cell.dataset.date;
     calendarOpen = false;
@@ -533,11 +405,179 @@
     render();
   });
 
-  // ── Service Worker registration ──
+  // -----------------------------
+  // Barcode + Open Food Facts
+  // -----------------------------
+  function setBarcodeStatus(msg, isError) {
+    barcodeStatus.textContent = msg || "";
+    barcodeStatus.classList.toggle("error", !!isError);
+  }
+
+  async function lookupBarcode(barcode) {
+    const cleaned = String(barcode || "").replace(/\D/g, "");
+    if (!cleaned) {
+      setBarcodeStatus("Enter a barcode number first.", true);
+      return;
+    }
+
+    setBarcodeStatus("Looking up product...", false);
+
+    try {
+      const url = "https://world.openfoodfacts.net/api/v2/product/" + encodeURIComponent(cleaned) + ".json";
+      const res = await fetch(url, { cache: "no-store" });
+
+      if (!res.ok) {
+        setBarcodeStatus("Lookup failed (" + res.status + "). Try again.", true);
+        return;
+      }
+
+      const data = await res.json();
+      if (!data || data.status !== 1 || !data.product) {
+        setBarcodeStatus("Product not found in Open Food Facts.", true);
+        return;
+      }
+
+      const p = data.product;
+      const name = (p.product_name || p.generic_name || "Scanned item").trim();
+
+      // Calories can appear in multiple places depending on the product.
+      const n = p.nutriments || {};
+      const kcalPerServing = numOrNull(n["energy-kcal_serving"]) || numOrNull(n["energy-kcal"]) || null;
+      const kcalPer100g = numOrNull(n["energy-kcal_100g"]) || null;
+
+      if (kcalPerServing != null) {
+        foodNameInput.value = name;
+        foodCaloriesInput.value = Math.round(kcalPerServing);
+        setBarcodeStatus("Found: " + name + " (per serving).", false);
+        foodCaloriesInput.focus();
+        return;
+      }
+
+      if (kcalPer100g != null) {
+        let grams = prompt("Calories are per 100g. How many grams did you eat?", "100");
+        if (grams == null) {
+          setBarcodeStatus("Found: " + name + " (per 100g). Enter grams to calculate.", false);
+          return;
+        }
+        grams = parseFloat(String(grams).replace(/[^0-9.]/g, ""));
+        if (!grams || grams <= 0) {
+          setBarcodeStatus("Invalid grams amount. Try again.", true);
+          return;
+        }
+        const cals = (kcalPer100g * grams) / 100;
+        foodNameInput.value = name;
+        foodCaloriesInput.value = Math.round(cals);
+        setBarcodeStatus("Found: " + name + " (" + grams + "g).", false);
+        foodCaloriesInput.focus();
+        return;
+      }
+
+      foodNameInput.value = name;
+      setBarcodeStatus("Found product name, but calories are missing. Enter calories manually.", true);
+      foodNameInput.focus();
+    } catch (err) {
+      setBarcodeStatus("Lookup error. Check your connection and try again.", true);
+    }
+  }
+
+  function numOrNull(v) {
+    const n = typeof v === "string" ? parseFloat(v) : v;
+    return Number.isFinite(n) ? n : null;
+  }
+
+  barcodeLookupBtn.addEventListener("click", function () {
+    lookupBarcode(barcodeInput.value);
+  });
+
+  barcodeInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      lookupBarcode(barcodeInput.value);
+    }
+  });
+
+  // -----------------------------
+  // Barcode scanning (Safari-compatible via ZXing)
+  // -----------------------------
+  function openScanner() {
+    scannerModal.classList.remove("hidden");
+    setBarcodeStatus("", false);
+  }
+
+  function closeScanner() {
+    scannerModal.classList.add("hidden");
+
+    try {
+      if (scanControls && typeof scanControls.stop === "function") scanControls.stop();
+    } catch (e) {}
+
+    scanControls = null;
+
+    try {
+      if (codeReader && typeof codeReader.reset === "function") codeReader.reset();
+    } catch (e) {}
+
+    codeReader = null;
+
+    // Ensure camera stream stops (iOS can be sticky)
+    try {
+      const stream = scannerVideo.srcObject;
+      if (stream && stream.getTracks) stream.getTracks().forEach((t) => t.stop());
+    } catch (e) {}
+    scannerVideo.srcObject = null;
+  }
+
+  async function startScan() {
+    if (!window.ZXingBrowser || !ZXingBrowser.BrowserMultiFormatReader) {
+      setBarcodeStatus("Scanner library did not load. Try refreshing.", true);
+      return;
+    }
+
+    openScanner();
+
+    try {
+      codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+
+      // Prefer back camera on phones
+      const constraints = { video: { facingMode: { ideal: "environment" } } };
+
+      scanControls = await codeReader.decodeFromConstraints(constraints, scannerVideo, (result, error, controls) => {
+        if (result) {
+          const text = result.getText ? result.getText() : String(result.text || "");
+          if (text) {
+            barcodeInput.value = text.replace(/\D/g, "");
+            setBarcodeStatus("Scanned: " + barcodeInput.value, false);
+            // Stop scanning immediately
+            try { controls.stop(); } catch (e) {}
+            closeScanner();
+            lookupBarcode(barcodeInput.value);
+          }
+        }
+      });
+    } catch (err) {
+      closeScanner();
+      setBarcodeStatus(
+        "Camera access failed. Make sure Safari has camera permission for this site.",
+        true
+      );
+    }
+  }
+
+  barcodeScanBtn.addEventListener("click", startScan);
+  scannerCloseBtn.addEventListener("click", closeScanner);
+  scannerModal.addEventListener("click", function (e) {
+    if (e.target === scannerModal) closeScanner();
+  });
+
+  // -----------------------------
+  // Service worker
+  // -----------------------------
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js");
   }
 
-  // ── Init ──
+  // -----------------------------
+  // Init
+  // -----------------------------
   render();
 })();

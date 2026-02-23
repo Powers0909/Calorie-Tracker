@@ -6,7 +6,7 @@ const ASSETS = [
   "app.js",
   "manifest.webmanifest",
   "icons/icon-192.png",
-  "icons/icon-512.png",
+  "icons/icon-512.png"
 ];
 
 self.addEventListener("install", function (event) {
@@ -23,8 +23,12 @@ self.addEventListener("activate", function (event) {
     caches.keys().then(function (names) {
       return Promise.all(
         names
-          .filter(function (name) { return name !== CACHE_NAME; })
-          .map(function (name) { return caches.delete(name); })
+          .filter(function (name) {
+            return name !== CACHE_NAME;
+          })
+          .map(function (name) {
+            return caches.delete(name);
+          })
       );
     })
   );
