@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111827" />
+  <title>Calorie Tracker</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Calorie Tracker</h1>
+      <div class="date-nav">
+        <button id="prev-day" aria-label="Previous day">&larr;</button>
+        <span id="current-date"></span>
+        <button id="next-day" aria-label="Next day">&rarr;</button>
+      </div>
+      <button id="toggle-calendar" class="btn-toggle-cal">Calendar</button>
+    </header>
+
+    <section id="calendar-section" class="calendar-section hidden">
+      <div class="cal-header">
+        <button id="prev-month" aria-label="Previous month">&larr;</button>
+        <span id="cal-month-label"></span>
+        <button id="next-month" aria-label="Next month">&rarr;</button>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-dow">S</div>
+        <div class="cal-dow">M</div>
+        <div class="cal-dow">T</div>
+        <div class="cal-dow">W</div>
+        <div class="cal-dow">T</div>
+        <div class="cal-dow">F</div>
+        <div class="cal-dow">S</div>
+      </div>
+      <div id="cal-days" class="cal-grid"></div>
+    </section>
+
+    <section class="summary-card">
+      <div class="summary-ring">
+        <svg viewBox="0 0 120 120" class="ring-svg">
+          <circle cx="60" cy="60" r="52" class="ring-bg" />
+          <circle cx="60" cy="60" r="52" class="ring-fill" id="ring-fill" />
+        </svg>
+        <div class="ring-text">
+          <span id="calories-consumed" class="ring-number">0</span>
+          <span class="ring-label">eaten</span>
+        </div>
+      </div>
+      <div class="summary-details">
+        <div class="summary-item">
+          <span class="summary-value" id="calories-remaining">0</span>
+          <span class="summary-label">remaining</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-value" id="calorie-goal">2000</span>
+          <span class="summary-label">goal</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="add-entry">
+      <h2>Add Food</h2>
+      <form id="entry-form">
+        <div class="form-row">
+          <input type="text" id="food-name" placeholder="Food name" required autocomplete="off" />
+          <input type="number" id="food-calories" placeholder="Calories" required min="1" />
+          <button type="submit" class="btn-add">+</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="entries-section">
+      <div class="entries-header">
+        <h2>Today's Food</h2>
+        <button id="clear-all" class="btn-clear" title="Clear all entries">Clear All</button>
+      </div>
+      <ul id="entries-list" class="entries-list"></ul>
+      <p id="no-entries" class="no-entries">No entries yet. Add your first food above.</p>
+    </section>
+
+    <section class="settings-section">
+      <h2>Settings</h2>
+      <div class="setting-row">
+        <label for="goal-input">Daily calorie goal</label>
+        <input type="number" id="goal-input" min="500" max="10000" value="2000" />
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
